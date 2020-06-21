@@ -4,13 +4,15 @@
 void ar_print_log(int level,char *fmt, va_list ap){
     char buf[1024];
     vsprintf(buf,fmt,ap);
+    
     if(level & 0x1){
-            printf("%s:error:%s",ar->filename,buf);
-            exit(-1);
+        printf("%s:error:%s",ar->filename,buf);
+        exit(-1);
     }else if(level & 0x2){
         printf("%s:warning:%s",ar->filename,buf);
     }else if(level & 0x4){
         printf("error:%s",buf);
+        exit(-1);
     }
 }
 
@@ -86,14 +88,8 @@ int load_archive(Ar_State *s1, int fd)
             return load_alacarte(s1, fd, size, 4);//size存储了文件成员大小
 	    } else if (!strcmp(ar_name, "/SYM64/")) {
             return load_alacarte(s1, fd, size, 8);
-        } else {
-//            Elf64_Ehdr ehdr;
-//            if (object_type(fd, &ehdr) == AFF_BINTYPE_REL) {
-//                if (load_object_file(s1, fd, file_offset) < 0)
-//                    return -1;
-//            }
-        }
-    lseek(fd, file_offset + size, SEEK_SET);
+        } 
+        lseek(fd, file_offset + size, SEEK_SET);
     }
     return 0;
 }
@@ -188,6 +184,8 @@ Ar_State *new_arState(){
     index = (ELF_buf *)ar_malloc(sizeof(ELF_buf));
     name = (ELF_buf *)ar_malloc(sizeof(ELF_buf));
     write_elf(index, "\0\0\0\0", 4);
+
+    ar = s;
     return s;
 }
 
@@ -204,6 +202,8 @@ int ar_open(Ar_State *s1){
 int object_type(int fd, Elf64_Ehdr *h)
 {
     int size = read(fd, h, sizeof *h);
+    if(size != sizeof *h)
+        ar_error("file 不是归档文件");
     if (size == sizeof *h && 0 == memcmp(h, ELFMAG, 4)) {//目标文件
         if (h->e_type == ET_REL)
             return AFF_BINTYPE_REL;//可重定位文件
@@ -230,6 +230,7 @@ void *load_data(int fd, unsigned long file_offset, unsigned long size)
 
 ELF_off *load_object_file(Ar_State *s1, char *filename)
 {
+    
     Elf64_Ehdr ehdr;
     Elf64_Shdr *shdr, *sh;
     int size, i, j, offset, offseti, nb_syms, sym_index, ret;
@@ -242,8 +243,10 @@ ELF_off *load_object_file(Ar_State *s1, char *filename)
 
     stab_index = stabstr_index = 0;
     int fd = ar_open(s1);
+    
     memset(&ehdr, 0 ,sizeof(Elf64_Ehdr));
     lseek(fd, 0L, SEEK_SET);
+    
     if (object_type(fd, &ehdr) != AFF_BINTYPE_REL)//不是重定位目标文件则报错
         ar_error("文件不是可重定位文件");
 

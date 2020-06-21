@@ -16,6 +16,11 @@
 
 #define OPT_HELP        0x1
 #define OPT_VERSION     0x2
+#define OPT_T           0x4
+#define OPT_X           0x8
+#define OPT_R           0x10
+#define OPT_P           0x100
+
 
 
 
@@ -79,7 +84,7 @@ typedef Elf64_Half Elf64_Versym;
 #define ET_CORE		4		/* Core file */
 
 typedef struct Ar_State{
-    char *outfile;
+    const char *outfile;
     char *filename;
     int fd;
     int opt;
