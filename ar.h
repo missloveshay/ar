@@ -95,6 +95,8 @@ typedef struct Ar_State{
 
 Ar_State *ar;
 int sym_num;
+int ar_p;
+int ar_t;
 
 typedef struct ArchiveHeader {
     char ar_name[16];           /* name of this member */

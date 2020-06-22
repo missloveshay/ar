@@ -86,11 +86,13 @@ static int parse_option(Ar_State *s, int argc, char **argv){
             	return OPT_HELP;
             case 0x4:
                 opt++;
-                s->outfile = argv[opt];
+                s->file_num++;
+                s->filename = argv[opt];
                 return OPT_X;
             case 0x5:
                 opt++;
-                s->outfile = argv[opt];
+                s->file_num++;
+                s->filename = argv[opt];
                 return OPT_T;
             case 0x6:
                 opt++;
@@ -108,7 +110,8 @@ static int parse_option(Ar_State *s, int argc, char **argv){
                 return OPT_R;
             case 0x7:
                 opt++;
-                s->outfile = argv[opt];
+                s->file_num++;
+                s->filename = argv[opt];
                 return OPT_P;
             default:
                 ar_init_error("无法识别的选项");
@@ -135,6 +138,7 @@ int main(int argc, char **argv){
 
     switch(i){
         case OPT_T:{
+            ar_t=1;
             fd = ar_open(s);
             type = object_type(fd, &ehdr);
             switch (type) {
@@ -145,64 +149,74 @@ int main(int argc, char **argv){
                 ar_error("不识别的文件类型");
                 break;
             }
+
         }
         return 0;
 
-        case OPT_X:
+        case OPT_X:{
+            fd = ar_open(s);
+            type = object_type(fd, &ehdr);
+            switch (type) {
+                case AFF_BINTYPE_AR:
+                ret = load_archive(s, fd);
+                break;
+            default:
+                ar_error("invalid filetype");
+                break;
+            }
+        }
             return 0;
         case OPT_R:{
             ELF_off *ptr = ar_malloc(sizeof(ELF_off));
-    ELF_off *head = ptr;
-    for(i=0; i<s->file_num; i++){
-        s->filename = s->file[i];
-        ptr->next = load_object_file(s, s->filename);
-        ptr = ptr->next;
-    }
-    ptr->next = NULL;
-    head = head->next;
-    ptr = head;
+            ELF_off *head = ptr;
+            for(i=0; i<s->file_num; i++){
+                s->filename = s->file[i];
+                ptr->next = load_object_file(s, s->filename);
+                ptr = ptr->next;
+            }
+            ptr->next = NULL;
+            head = head->next;
+            ptr = head;
 
-    ArchiveHeader hdr;ELF_buf outfile;
-    memset(&hdr, 0, sizeof(ArchiveHeader));
-    memset(&outfile, 0, sizeof(ELF_buf));
-    memset(hdr.ar_name, 32, sizeof(hdr.ar_name));
-    memcpy(hdr.ar_name, "/",1);
-    *(int *)index->data = sym_num;
+            ArchiveHeader hdr;ELF_buf outfile;
+            memset(&hdr, 0, sizeof(ArchiveHeader));
+            memset(&outfile, 0, sizeof(ELF_buf));
 
-    memset(hdr.ar_size, ' ', sizeof(hdr.ar_size));
-    itoa(index->ind + name->ind,hdr.ar_size,10);
+            memset(hdr.ar_name, 32, sizeof(hdr.ar_name));
+            memcpy(hdr.ar_name, "/",1);
+            *(int *)index->data = sym_num;
 
-    write_elf(&outfile, "!<arch>\n", 8);
-    write_elf(&outfile, &hdr, sizeof(ArchiveHeader));
+            memset(hdr.ar_size, ' ', sizeof(hdr.ar_size));
+            itoa(index->ind + name->ind,hdr.ar_size,10);
 
-    int cv;
-    while(ptr){
-        for(cv=0;cv<ptr->num;cv++){
-            *ptr->off[cv] = outfile.ind + name->ind + index->ind;
-        }
-        ptr = ptr->next;
-    }
-    ptr = head;
+            write_elf(&outfile, "!<arch>\n", 8);
+            // unsigned char uptr = 0xa;
+            // write_elf(&outfile, &uptr, 1);
+            write_elf(&outfile, &hdr, sizeof(ArchiveHeader));
 
-    
-    
-    write_elf(&outfile, index->data, index->ind);
-    write_elf(&outfile, name->data, name->ind);
+            int cv;
+            while(ptr){
+                for(cv=0;cv<ptr->num;cv++){
+                    *ptr->off[cv] = outfile.ind + name->ind + index->ind;
+                }
+                ptr = ptr->next;
+            }
+            ptr = head;
 
-    printf("ind size is %d\n",outfile.ind);
-    printf("size is %d\n",sizeof(ArchiveHeader) + name->ind + index->ind);
+            write_elf(&outfile, index->data, index->ind);
+            write_elf(&outfile, name->data, name->ind);
 
-    while(head){
-        lseek(head->fd, 0L,SEEK_END);
-	    long int s=tell(head->fd);
-        memset(&hdr, 0, sizeof(ArchiveHeader));
-        memset(hdr.ar_name, 32, sizeof(hdr.ar_name));
-        memcpy(hdr.ar_name, head->file, strlen(head->file));
+            while(head){
+            lseek(head->fd, 0L,SEEK_END);
+	        long int s=tell(head->fd);
+            memset(&hdr, 0, sizeof(ArchiveHeader));
+            memset(hdr.ar_name, 32, sizeof(hdr.ar_name));
+            memcpy(hdr.ar_name, head->file, strlen(head->file));
+            hdr.ar_name[strlen(head->file)] = '/';
+            memset(hdr.ar_size, ' ', sizeof(hdr.ar_size));
+            itoa(s,hdr.ar_size,10);
 
-        memset(hdr.ar_size, ' ', sizeof(hdr.ar_size));
-        itoa(s,hdr.ar_size,10);
-
-        write_elf(&outfile, &hdr, sizeof(ArchiveHeader));
+            write_elf(&outfile, &hdr, sizeof(ArchiveHeader));
 
         void *data = ar_malloc(s);
         lseek(head->fd, 0L,SEEK_SET);
@@ -215,14 +229,25 @@ int main(int argc, char **argv){
         head = head->next;
     }
 
-    int fd1 = open(s->outfile,O_CREAT|O_RDWR);
-    printf("\noutfile.ind is %d",outfile.ind);
+    int fd1 = open(s->outfile, O_CREAT |O_WRONLY |O_BINARY);
     write(fd1, outfile.data, outfile.ind);
     close(fd1);
 
-        }
+    }
             return 0;
-        case OPT_P:
+        case OPT_P:{
+            ar_p=1;
+            fd = ar_open(s);
+            type = object_type(fd, &ehdr);
+            switch (type) {
+                case AFF_BINTYPE_AR:
+                ret = load_archive(s, fd);
+                break;
+            default:
+                ar_error("不识别的文件类型");
+                break;
+            }
+        }
             return 0;
     }
     return 0;

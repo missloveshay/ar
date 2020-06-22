@@ -141,8 +141,10 @@ int load_alacarte(Ar_State *s1, int fd, int size, int entrysize)
     data = ar_malloc(size);//分配文件大小
     if (read(fd, data, size) != size)//读取了成员内容,下一个则是目标文件的签名和数据
         return -1;
+    if(ar_p)
+    goto ar_p_test;
     for(;;){
-        len = read(fd, &hdr, sizeof(hdr));//读取签名
+        len = read(fd, &hdr, sizeof(hdr));//读取目标文件的签名
         if(len == 0 || len != sizeof(hdr))
             break;
         if (len == 0)
@@ -153,16 +155,22 @@ int load_alacarte(Ar_State *s1, int fd, int size, int entrysize)
         ar_size[sizeof(hdr.ar_size)] = '\0';
         size1 = strtol(ar_size, NULL, 0);//将字符串的数字转化数字,文件成员大小
         memcpy(ar_name, hdr.ar_name, sizeof(hdr.ar_name));
-        for(i = sizeof(hdr.ar_name) - 1; i >= 0; i--) {//解析链接器成员,解析名字
+        for(i = sizeof(hdr.ar_name) - 1; i >= 0; i--) {//解析解析名字
             if (ar_name[i] != ' ')
                 break;
         }
         ar_name[i] = '\0';
         void *fdata = ar_malloc(size1);
         read(fd, fdata, size1);
+        if(ar_t){
+            free(fdata);
+            printf("%s\n",ar_name);
+            continue;
+        }
         ar_write(ar_name, fdata, size1);
     }
     exit(0);
+    ar_p_test:
     nsyms = entrysize == 4 ? get_be32(data) : get_be64(data);//读取符号的个数?//50
     ar_index = data + entrysize;//符号和数据的起始地址
     ar_names = (char *) ar_index + nsyms * entrysize;//指向了链接器成员的函数名
@@ -265,7 +273,6 @@ ELF_off *load_object_file(Ar_State *s1, char *filename)
     symtab = NULL;
     strtab = NULL;
     nb_syms = 0;
-    printf("开始%d\n",ehdr.e_shnum);
     for(i = 1; i < ehdr.e_shnum; i++) {//遍历节表
         sh = &shdr[i];
         if (sh->sh_type == SHT_SYMTAB) {
@@ -300,7 +307,6 @@ ELF_off *load_object_file(Ar_State *s1, char *filename)
     //注意开头为04字节,还要注意段序号,注意代码是否是函数
     char *p, *p1;
     sym = symtab + 1;
-    printf("name:\n");
     for(i = 1; i < nb_syms; i++, sym++){
         if(ELF64_ST_TYPE(sym->st_info) != STT_FUNC)
             continue;
@@ -350,6 +356,8 @@ void *elf_realloc(void *data,size_t size, size_t *size_all){
     return realloc(data,len);
 }
 
+
+//我怎么想的?重新分配后,地址发生了变化,不可能往里面写入数据了,正确的做法是返回偏移量
 void *w_ELF(ELF_buf *p,size_t size){
     unsigned char *ptr;
     if((p->ind + size) >= (p->data_all)){
